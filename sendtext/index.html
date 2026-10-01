@@ -40,7 +40,7 @@
   const $ = id => document.getElementById(id);
   const box = $('box'), st = $('status');
   const SERVER = 'https://ntfy.sh/';
-  const MAX = 4000;
+  const MAX = 400000;
 
   // kênh lưu note tự lấy từ địa chỉ trang -> máy nào mở cùng trang là cùng note
   const topic = 'note-' + (location.hostname + location.pathname).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55);
