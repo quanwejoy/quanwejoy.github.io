@@ -3,172 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Clipboard chung</title>
+<title>Note chung</title>
 <style>
   :root { --bg:#f6f7f9; --card:#fff; --text:#1c1e21; --muted:#6b7280; --line:#d8dce3; --accent:#2563eb; --ok:#15803d; --err:#b91c1c; }
   @media (prefers-color-scheme: dark) {
     :root { --bg:#0f1115; --card:#181b21; --text:#e8eaed; --muted:#9aa0a9; --line:#2b303a; --accent:#5b8def; --ok:#4ade80; --err:#f87171; }
   }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; padding: 16px; }
-  main { width: 100%; max-width: 820px; display: flex; flex-direction: column; gap: 10px; }
-  textarea { flex: 1; min-height: 55vh; width: 100%; resize: vertical; padding: 14px; font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 12px; outline: none; }
-  textarea:focus { border-color: var(--accent); }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  button { font: inherit; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  #status { color: var(--muted); font-size: 14px; margin-left: auto; }
-  #status.ok { color: var(--ok); } #status.err { color: var(--err); }
-  details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; font-size: 14px; }
-  summary { cursor: pointer; color: var(--muted); }
-  details label { display: block; margin-top: 10px; color: var(--muted); }
-  details input { width: 100%; padding: 8px 10px; margin-top: 4px; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-  .hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; justify-content:center; padding:16px; }
+  main { width:100%; max-width:820px; display:flex; flex-direction:column; gap:10px; }
+  textarea { width:100%; min-height:60vh; resize:vertical; padding:14px; font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:12px; outline:none; }
+  textarea:focus { border-color:var(--accent); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button { font:inherit; padding:9px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button:disabled { opacity:.5; }
+  #status { margin-left:auto; color:var(--muted); font-size:14px; }
+  #status.ok { color:var(--ok); } #status.err { color:var(--err); }
+  .hint { color:var(--muted); font-size:13px; }
 </style>
 </head>
 <body>
 <main>
-  <textarea id="box" placeholder="Dán hoặc gõ văn bản ở đây rồi bấm Gửi…" spellcheck="false"></textarea>
-
+  <textarea id="box" placeholder="Gõ hoặc dán text rồi bấm Gửi…" spellcheck="false" autofocus></textarea>
   <div class="row">
     <button class="primary" id="send">Gửi (Ctrl+Enter)</button>
     <button id="copy">Sao chép</button>
     <button id="reload">Tải lại</button>
     <span id="status"></span>
   </div>
-
-  <details id="settings">
-    <summary>Cài đặt (chỉ cần trên máy muốn GỬI)</summary>
-    <label>GitHub token (fine-grained, quyền Contents: Read and write cho repo này)
-      <input id="token" type="password" placeholder="github_pat_…" autocomplete="off">
-    </label>
-    <label>Chủ repo (để trống = tự nhận từ địa chỉ trang)
-      <input id="owner" placeholder="username">
-    </label>
-    <label>Tên repo (để trống = tự nhận)
-      <input id="repo" placeholder="ten-repo">
-    </label>
-    <label>File lưu nội dung
-      <input id="path" placeholder="message.txt">
-    </label>
-    <div class="row" style="margin-top:12px">
-      <button id="saveCfg">Lưu cài đặt</button>
-      <button id="clearCfg">Xoá token khỏi máy này</button>
-    </div>
-    <div class="hint">Token chỉ lưu trong trình duyệt của máy này. Máy chỉ muốn đọc/sao chép thì không cần nhập gì.</div>
-  </details>
+  <div class="hint">Mở trang này trên máy nào cũng thấy note vừa gửi. Tối đa ~4000 byte, lưu khoảng 12 giờ.</div>
 </main>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const box = $('box'), statusEl = $('status');
-  const LS = k => { try { return localStorage.getItem(k) || ''; } catch { return ''; } };
-  const LSset = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch {} };
+  const box = $('box'), st = $('status');
+  const SERVER = 'https://ntfy.sh/';
+  const MAX = 4000;
 
-  let dirty = false;      // người dùng đã sửa mà chưa gửi
-  let busy = false;
+  // kênh lưu note tự lấy từ địa chỉ trang -> máy nào mở cùng trang là cùng note
+  const topic = 'note-' + (location.hostname + location.pathname).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55);
 
-  function cfg() {
-    const host = location.hostname;
-    const guessOwner = host.endsWith('.github.io') ? host.split('.')[0] : '';
-    const seg = location.pathname.split('/').filter(Boolean)[0];
-    const guessRepo = host.endsWith('.github.io') ? (seg && !seg.includes('.') ? seg : host) : '';
-    return {
-      owner: LS('cb_owner') || guessOwner,
-      repo:  LS('cb_repo')  || guessRepo,
-      path:  LS('cb_path')  || 'message.txt',
-      token: LS('cb_token')
-    };
-  }
-
-  function setStatus(msg, kind = '') { statusEl.textContent = msg; statusEl.className = kind; }
-
-  function url(c) {
-    return `https://api.github.com/repos/${c.owner}/${c.repo}/contents/${c.path.split('/').map(encodeURIComponent).join('/')}`;
-  }
-  function headers(c, accept) {
-    const h = { Accept: accept };
-    if (c.token) h.Authorization = 'Bearer ' + c.token;
-    return h;
-  }
-
-  const toB64 = s => {
-    const bytes = new TextEncoder().encode(s);
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return btoa(bin);
-  };
+  let dirty = false, busy = false;
+  const setStatus = (m, k = '') => { st.textContent = m; st.className = k; };
 
   async function load(force = false) {
-    const c = cfg();
-    if (!c.owner || !c.repo) { setStatus('Chưa xác định repo — mở Cài đặt', 'err'); return; }
     if (dirty && !force) return;
     setStatus('Đang tải…');
     try {
-      const res = await fetch(url(c) + '?t=' + Date.now(), { headers: headers(c, 'application/vnd.github.raw+json'), cache: 'no-store' });
-      if (res.status === 404) { box.value = ''; dirty = false; setStatus('Chưa có nội dung'); return; }
-      if (res.status === 403 || res.status === 429) { setStatus('Quá giới hạn truy cập GitHub, thử lại sau', 'err'); return; }
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      box.value = await res.text();
+      const r = await fetch(SERVER + topic + '/json?poll=1&since=all', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const lines = (await r.text()).split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } });
+      const msgs = lines.filter(m => m && m.event === 'message');
+      const last = msgs[msgs.length - 1];
+      box.value = last ? last.message : '';
       dirty = false;
-      setStatus('Đã tải ' + new Date().toLocaleTimeString(), 'ok');
+      setStatus(last ? 'Đã tải ' + new Date().toLocaleTimeString() : 'Chưa có note nào', last ? 'ok' : '');
     } catch (e) { setStatus('Lỗi tải: ' + e.message, 'err'); }
   }
 
-  async function send(retry = true) {
-    const c = cfg();
-    if (!c.token) { $('settings').open = true; $('token').focus(); setStatus('Cần nhập token để gửi', 'err'); return; }
+  async function send() {
     if (busy) return;
+    const text = box.value;
+    if (!text.trim()) { setStatus('Chưa có nội dung', 'err'); return; }
+    if (new TextEncoder().encode(text).length > MAX) { setStatus('Quá dài (tối đa ~4000 byte)', 'err'); return; }
     busy = true; $('send').disabled = true; setStatus('Đang gửi…');
     try {
-      // lấy sha hiện tại (nếu file đã tồn tại)
-      let sha;
-      const g = await fetch(url(c) + '?t=' + Date.now(), { headers: headers(c, 'application/vnd.github+json'), cache: 'no-store' });
-      if (g.ok) sha = (await g.json()).sha;
-      else if (g.status !== 404) throw new Error('HTTP ' + g.status + (g.status === 401 ? ' (token sai/hết hạn)' : ''));
-
-      const body = { message: 'update ' + new Date().toISOString(), content: toB64(box.value) };
-      if (sha) body.sha = sha;
-      const p = await fetch(url(c), { method: 'PUT', headers: { ...headers(c, 'application/vnd.github+json'), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (p.status === 409 && retry) { busy = false; return send(false); }
-      if (!p.ok) {
-        const j = await p.json().catch(() => ({}));
-        throw new Error('HTTP ' + p.status + (j.message ? ' – ' + j.message : ''));
-      }
+      const r = await fetch(SERVER + topic, { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       dirty = false;
       setStatus('Đã gửi ' + new Date().toLocaleTimeString(), 'ok');
     } catch (e) { setStatus('Lỗi gửi: ' + e.message, 'err'); }
     finally { busy = false; $('send').disabled = false; }
   }
 
-  async function copy() {
-    try { await navigator.clipboard.writeText(box.value); }
-    catch { box.select(); document.execCommand('copy'); }
-    setStatus('Đã sao chép', 'ok');
+  async function copyText(t, msg) {
+    try { await navigator.clipboard.writeText(t); }
+    catch { const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }
+    setStatus(msg, 'ok');
   }
 
   box.addEventListener('input', () => { dirty = true; setStatus('Chưa gửi'); });
   box.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); send(); } });
-  $('send').onclick = () => send();
-  $('copy').onclick = copy;
+  $('send').onclick = send;
+  $('copy').onclick = () => copyText(box.value, 'Đã sao chép');
   $('reload').onclick = () => load(true);
-
-  // cài đặt
-  const c0 = cfg();
-  $('token').value = c0.token; $('owner').value = LS('cb_owner'); $('repo').value = LS('cb_repo'); $('path').value = LS('cb_path');
-  $('saveCfg').onclick = () => {
-    LSset('cb_token', $('token').value.trim()); LSset('cb_owner', $('owner').value.trim());
-    LSset('cb_repo', $('repo').value.trim()); LSset('cb_path', $('path').value.trim());
-    setStatus('Đã lưu cài đặt', 'ok'); load(true);
-  };
-  $('clearCfg').onclick = () => { LSset('cb_token', ''); $('token').value = ''; setStatus('Đã xoá token', 'ok'); };
-
-  // tự làm mới khi quay lại tab; có token thì thêm poll 30s (giới hạn API cao hơn)
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
-  setInterval(() => { if (!document.hidden && cfg().token) load(); }, 30000);
+  setInterval(() => { if (!document.hidden) load(); }, 20000);
 
   load(true);
 })();
