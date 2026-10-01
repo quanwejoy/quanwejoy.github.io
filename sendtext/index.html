@@ -12,15 +12,25 @@
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; display:flex; justify-content:center; padding:16px; }
   main { width:100%; max-width:820px; display:flex; flex-direction:column; gap:10px; }
-  textarea { width:100%; min-height:60vh; resize:vertical; padding:14px; font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:12px; outline:none; }
+  textarea { width:100%; min-height:34vh; resize:vertical; padding:14px; font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); background:var(--card); border:1px solid var(--line); border-radius:12px; outline:none; }
   textarea:focus { border-color:var(--accent); }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   button { font:inherit; padding:9px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--text); cursor:pointer; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   button:disabled { opacity:.5; }
+  button.sm { padding:4px 10px; font-size:13px; border-radius:8px; }
+  button.danger { color:var(--err); }
   #status { margin-left:auto; color:var(--muted); font-size:14px; }
   #status.ok { color:var(--ok); } #status.err { color:var(--err); }
   .hint { color:var(--muted); font-size:13px; }
+  .head { display:flex; align-items:center; justify-content:space-between; margin-top:8px; color:var(--muted); font-size:14px; }
+  #list { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:8px; min-height:130px; }
+  .card.cur { border-color:var(--accent); }
+  .card time { color:var(--muted); font-size:12px; }
+  .card .txt { flex:1; white-space:pre-wrap; word-break:break-word; font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+  .card .acts { display:flex; gap:6px; }
+  .empty { color:var(--muted); font-size:14px; grid-column:1/-1; padding:14px 0; }
 </style>
 </head>
 <body>
@@ -32,35 +42,92 @@
     <button id="reload">Tải lại</button>
     <span id="status"></span>
   </div>
-  <div class="hint">Mở trang này trên máy nào cũng thấy note vừa gửi. Tối đa ~4000 byte, lưu khoảng 12 giờ.</div>
+  <div class="hint">Mở trang này trên máy nào cũng thấy các note đã gửi. Mỗi note tối đa ~4000 byte, lưu khoảng 12 giờ.</div>
+
+  <div class="head"><span id="count">Đã gửi</span><button class="sm danger" id="clearAll">Xoá hết</button></div>
+  <div id="list"></div>
 </main>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const box = $('box'), st = $('status');
+  const box = $('box'), st = $('status'), listEl = $('list');
   const SERVER = 'https://ntfy.sh/';
-  const MAX = 400000;
-
-  // kênh lưu note tự lấy từ địa chỉ trang -> máy nào mở cùng trang là cùng note
+  const MAX = 4000;
   const topic = 'note-' + (location.hostname + location.pathname).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55);
 
-  let dirty = false, busy = false;
+  let dirty = false, busy = false, items = [];
   const setStatus = (m, k = '') => { st.textContent = m; st.className = k; };
 
+  async function copyText(t, msg) {
+    try { await navigator.clipboard.writeText(t); }
+    catch { const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }
+    setStatus(msg, 'ok');
+  }
+
+  // nếu ntfy biến note dài thành file đính kèm thì tải nội dung file về
+  async function resolveText(m) {
+    if (m.attachment && m.attachment.url) {
+      try {
+        const r = await fetch(m.attachment.url);
+        if (r.ok) return await r.text();
+      } catch {}
+      return '(file đính kèm đã hết hạn hoặc không tải được)';
+    }
+    return m.message || '';
+  }
+
   async function load(force = false) {
-    if (dirty && !force) return;
     setStatus('Đang tải…');
     try {
       const r = await fetch(SERVER + topic + '/json?poll=1&since=all', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      const lines = (await r.text()).split('\n').filter(Boolean).map(l => { try { return JSON.parse(l); } catch { return null; } });
-      const msgs = lines.filter(m => m && m.event === 'message');
-      const last = msgs[msgs.length - 1];
-      box.value = last ? last.message : '';
-      dirty = false;
-      setStatus(last ? 'Đã tải ' + new Date().toLocaleTimeString() : 'Chưa có note nào', last ? 'ok' : '');
+      const evs = (await r.text()).split('\n').filter(Boolean)
+        .map(l => { try { return JSON.parse(l); } catch { return null; } })
+        .filter(m => m && m.event === 'message');
+
+      // "xoá" = gửi một tin đánh dấu del-<id>; mọi máy đều ẩn tin đó
+      const gone = new Set();
+      evs.forEach(m => (m.tags || []).forEach(t => { if (t.startsWith('del-')) gone.add(t.slice(4)); }));
+      const live = evs.filter(m => !(m.tags || []).some(t => t.startsWith('del-')) && !gone.has(m.id))
+                      .sort((a, b) => b.time - a.time);
+
+      items = await Promise.all(live.map(async m => ({ id: m.id, time: m.time, text: await resolveText(m) })));
+      render();
+      if (force || !dirty) { box.value = items[0] ? items[0].text : ''; dirty = false; }
+      setStatus('Đã tải ' + new Date().toLocaleTimeString(), 'ok');
     } catch (e) { setStatus('Lỗi tải: ' + e.message, 'err'); }
+  }
+
+  function render() {
+    listEl.textContent = '';
+    $('count').textContent = 'Đã gửi (' + items.length + ')';
+    $('clearAll').style.display = items.length ? '' : 'none';
+    if (!items.length) {
+      const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Chưa có note nào.'; listEl.appendChild(d); return;
+    }
+    items.forEach((it, i) => {
+      const c = document.createElement('div'); c.className = 'card' + (i === 0 ? ' cur' : '');
+      const t = document.createElement('time'); t.textContent = new Date(it.time * 1000).toLocaleString();
+      const x = document.createElement('div'); x.className = 'txt'; x.textContent = it.text; x.title = 'Bấm để đưa lên hộp';
+      x.onclick = () => { box.value = it.text; dirty = true; setStatus('Đã đưa lên hộp (chưa gửi)'); };
+      const a = document.createElement('div'); a.className = 'acts';
+      const b1 = document.createElement('button'); b1.className = 'sm'; b1.textContent = 'Sao chép'; b1.onclick = () => copyText(it.text, 'Đã sao chép');
+      const b2 = document.createElement('button'); b2.className = 'sm danger'; b2.textContent = 'Xoá'; b2.onclick = () => del([it.id]);
+      a.append(b1, b2); c.append(t, x, a); listEl.appendChild(c);
+    });
+  }
+
+  async function del(ids) {
+    setStatus('Đang xoá…');
+    try {
+      for (const id of ids) {
+        const r = await fetch(SERVER + topic, { method: 'POST', body: 'deleted', headers: { 'Tags': 'del-' + id } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+      }
+      await load();
+      setStatus('Đã xoá', 'ok');
+    } catch (e) { setStatus('Lỗi xoá: ' + e.message, 'err'); }
   }
 
   async function send() {
@@ -70,18 +137,13 @@
     if (new TextEncoder().encode(text).length > MAX) { setStatus('Quá dài (tối đa ~4000 byte)', 'err'); return; }
     busy = true; $('send').disabled = true; setStatus('Đang gửi…');
     try {
-      const r = await fetch(SERVER + topic, { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      const r = await fetch(SERVER + topic, { method: 'POST', body: text, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Tags': 'note' } });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       dirty = false;
+      await load(true);
       setStatus('Đã gửi ' + new Date().toLocaleTimeString(), 'ok');
     } catch (e) { setStatus('Lỗi gửi: ' + e.message, 'err'); }
     finally { busy = false; $('send').disabled = false; }
-  }
-
-  async function copyText(t, msg) {
-    try { await navigator.clipboard.writeText(t); }
-    catch { const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }
-    setStatus(msg, 'ok');
   }
 
   box.addEventListener('input', () => { dirty = true; setStatus('Chưa gửi'); });
@@ -89,6 +151,7 @@
   $('send').onclick = send;
   $('copy').onclick = () => copyText(box.value, 'Đã sao chép');
   $('reload').onclick = () => load(true);
+  $('clearAll').onclick = () => { if (confirm('Xoá tất cả note đã gửi?')) del(items.map(i => i.id)); };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
   setInterval(() => { if (!document.hidden) load(); }, 20000);
 
