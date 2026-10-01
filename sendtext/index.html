@@ -53,7 +53,7 @@
   const $ = id => document.getElementById(id);
   const box = $('box'), st = $('status'), listEl = $('list');
   const SERVER = 'https://ntfy.sh/';
-  const MAX = 4000;
+  const MAX = 40000;
   const topic = 'note-' + (location.hostname + location.pathname).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 55);
 
   let dirty = false, busy = false, items = [];
